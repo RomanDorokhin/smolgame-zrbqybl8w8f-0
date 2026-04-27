@@ -1,0 +1,882 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>RAGDOLL SMASH</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; touch-action:none; user-select:none; }
+  body { background:#0a0a0f; overflow:hidden; font-family:'Courier New',monospace; }
+  #canvas { display:block; width:100vw; height:100vh; }
+
+  /* ── MENU ── */
+  #menu {
+    position:fixed; inset:0; z-index:100;
+    display:flex; flex-direction:column;
+    align-items:center; justify-content:center;
+    background:linear-gradient(160deg,rgba(0,0,0,0.55) 0%, rgba(20,0,0,0.72) 100%);
+    backdrop-filter:blur(2px);
+    transition:opacity 0.6s;
+  }
+  #menu.hidden { opacity:0; pointer-events:none; }
+
+  .menu-logo {
+    text-align:center; margin-bottom:10px;
+    animation: logoBob 2s ease-in-out infinite;
+  }
+  @keyframes logoBob {
+    0%,100%{ transform:translateY(0) rotate(-1deg); }
+    50%    { transform:translateY(-8px) rotate(1deg); }
+  }
+  .menu-logo .big {
+    font-size:clamp(38px,10vw,72px);
+    font-weight:900; letter-spacing:4px;
+    color:#fff;
+    text-shadow: 0 0 30px #ff2200, 0 0 60px #ff6600, 4px 4px 0 #550000;
+    line-height:1;
+  }
+  .menu-logo .sub {
+    font-size:clamp(11px,3vw,16px);
+    letter-spacing:10px; color:#ff4422;
+    margin-top:4px; text-transform:uppercase;
+  }
+
+  .menu-tags {
+    display:flex; gap:8px; flex-wrap:wrap; justify-content:center;
+    margin:16px 0 28px;
+  }
+  .tag {
+    background:rgba(255,40,0,0.15); border:1px solid rgba(255,60,0,0.3);
+    color:#ff6633; font-size:10px; letter-spacing:2px;
+    padding:4px 10px; border-radius:4px; text-transform:uppercase;
+  }
+
+  #play-btn {
+    position:relative; overflow:hidden;
+    background:linear-gradient(135deg,#cc1100,#ff4400);
+    color:#fff; font-family:'Courier New',monospace;
+    font-size:clamp(18px,5vw,28px); font-weight:900;
+    letter-spacing:6px; text-transform:uppercase;
+    border:none; border-radius:14px;
+    padding:18px 52px; cursor:pointer;
+    box-shadow: 0 0 40px rgba(255,60,0,0.5), 0 6px 0 #660000;
+    transition:transform 0.1s, box-shadow 0.1s;
+    animation:btnPulse 1.8s ease-in-out infinite;
+  }
+  @keyframes btnPulse {
+    0%,100%{ box-shadow:0 0 30px rgba(255,60,0,0.4), 0 6px 0 #660000; }
+    50%    { box-shadow:0 0 70px rgba(255,100,0,0.9), 0 6px 0 #660000; }
+  }
+  #play-btn::before {
+    content:''; position:absolute; top:0; left:-100%;
+    width:60%; height:100%;
+    background:linear-gradient(90deg,transparent,rgba(255,255,255,0.2),transparent);
+    animation:shine 2.2s linear infinite;
+  }
+  @keyframes shine { to { left:200%; } }
+  #play-btn:active { transform:translateY(4px); box-shadow:0 0 20px rgba(255,60,0,0.3), 0 2px 0 #660000; }
+
+  .menu-hint {
+    margin-top:20px; color:rgba(255,255,255,0.3);
+    font-size:10px; letter-spacing:3px;
+    animation:blink 1.4s ease-in-out infinite;
+  }
+  @keyframes blink { 0%,100%{opacity:0.3} 50%{opacity:0.8} }
+
+  /* ── GAME UI ── */
+  #ui-top {
+    position:fixed; top:0; left:0; right:0;
+    display:flex; align-items:center; justify-content:space-between;
+    padding:10px 14px;
+    background:linear-gradient(to bottom,rgba(0,0,0,0.85),transparent);
+    pointer-events:none; z-index:10;
+    opacity:0; transition:opacity 0.5s;
+  }
+  #ui-top.visible { opacity:1; }
+  #score-label { color:#ff3c3c; font-size:11px; letter-spacing:3px; text-transform:uppercase; }
+  #score { color:#fff; font-size:26px; font-weight:bold; letter-spacing:1px; line-height:1; }
+  #health-wrap { display:flex; flex-direction:column; align-items:flex-end; gap:4px; }
+  #health-label { color:#aaa; font-size:10px; letter-spacing:2px; }
+  #health-bar-bg { width:100px; height:10px; background:#1a1a1a; border-radius:5px; overflow:hidden; border:1px solid #333; }
+  #health-bar { height:100%; width:100%; background:#e03030; border-radius:5px; transition:width 0.15s; }
+
+  #combo {
+    position:fixed; top:80px; left:50%; transform:translateX(-50%);
+    color:#ffcc00; font-size:20px; font-weight:bold; opacity:0;
+    pointer-events:none; z-index:10; text-shadow:0 0 10px #ff8800;
+    transition:opacity 0.3s;
+  }
+  #toolbar {
+    position:fixed; bottom:0; left:0; right:0;
+    display:flex; justify-content:space-around; align-items:center;
+    padding:8px 4px 14px;
+    background:linear-gradient(to top,rgba(0,0,0,0.92),transparent);
+    z-index:10; opacity:0; pointer-events:none; transition:opacity 0.5s;
+  }
+  #toolbar.visible { opacity:1; pointer-events:all; }
+  .tool-btn {
+    display:flex; flex-direction:column; align-items:center; gap:4px;
+    padding:8px 12px; border-radius:12px;
+    border:2px solid transparent; cursor:pointer;
+    transition:all 0.15s; background:rgba(255,255,255,0.04);
+  }
+  .tool-btn.active { border-color:#ff3c3c; background:rgba(255,60,60,0.15); }
+  .tool-btn .icon { font-size:26px; line-height:1; }
+  .tool-btn .name { color:#888; font-size:9px; letter-spacing:1px; text-transform:uppercase; }
+  .tool-btn.active .name { color:#ff3c3c; }
+
+  #reset-btn {
+    position:fixed; top:10px; left:50%; transform:translateX(-50%);
+    background:rgba(255,255,255,0.06); border:1px solid #333;
+    color:#888; font-size:10px; letter-spacing:2px; padding:5px 14px;
+    border-radius:20px; cursor:pointer; z-index:10;
+    font-family:'Courier New',monospace;
+    opacity:0; pointer-events:none; transition:opacity 0.5s;
+  }
+  #reset-btn.visible { opacity:1; pointer-events:all; }
+  #reset-btn:active { background:rgba(255,60,60,0.2); color:#ff3c3c; border-color:#ff3c3c; }
+
+  #floating-text-container { position:fixed; inset:0; pointer-events:none; z-index:9; overflow:hidden; }
+  .float-txt {
+    position:absolute; color:#ffcc00; font-weight:bold;
+    font-size:14px; pointer-events:none; white-space:nowrap;
+    animation:floatUp 1.2s ease-out forwards;
+    text-shadow:0 0 8px currentColor;
+  }
+  @keyframes floatUp {
+    0%  { opacity:1; transform:translateY(0) scale(1); }
+    80% { opacity:1; }
+    100%{ opacity:0; transform:translateY(-60px) scale(0.8); }
+  }
+  #screen-flash { position:fixed; inset:0; pointer-events:none; z-index:20; opacity:0; transition:opacity 0.08s; }
+</style>
+</head>
+<body>
+<canvas id="canvas"></canvas>
+
+<!-- MENU -->
+<div id="menu">
+  <div class="menu-logo">
+    <div class="big">RAGDOLL</div>
+    <div class="big" style="color:#ff3300;margin-top:-8px">SMASH</div>
+    <div class="sub">☠ бей его ☠</div>
+  </div>
+  <div class="menu-tags">
+    <span class="tag">💥 взрывы</span>
+    <span class="tag">⚡ молния</span>
+    <span class="tag">💣 бомбы</span>
+    <span class="tag">🔫 стрельба</span>
+  </div>
+  <button id="play-btn">▶ ИГРАТЬ</button>
+  <div class="menu-hint">тапни чтобы начать</div>
+</div>
+
+<!-- GAME UI -->
+<div id="ui-top">
+  <div>
+    <div id="score-label">SCORE</div>
+    <div id="score">0</div>
+  </div>
+  <div id="health-wrap">
+    <div id="health-label">HEALTH</div>
+    <div id="health-bar-bg"><div id="health-bar"></div></div>
+  </div>
+</div>
+
+<button id="reset-btn">⟳ RESET</button>
+<div id="combo"></div>
+<div id="floating-text-container"></div>
+<div id="screen-flash"></div>
+<div id="toolbar"></div>
+
+<script>
+// ═══════════════════════════════════════════════════════════
+//  CONFIG
+// ═══════════════════════════════════════════════════════════
+const TOOLS = [
+  { id:'fist',      icon:'👊', name:'Кулак'     },
+  { id:'gun',       icon:'🔫', name:'Пистолет'  },
+  { id:'bomb',      icon:'💣', name:'Бомба'     },
+  { id:'lightning', icon:'⚡', name:'Молния'    },
+  { id:'saw',       icon:'🪚', name:'Пила'      },
+  { id:'freeze',    icon:'❄️',  name:'Заморозка' },
+];
+
+const canvas = document.getElementById('canvas');
+const ctx    = canvas.getContext('2d');
+const W = () => canvas.width;
+const H = () => canvas.height;
+const GRAVITY = 0.45;
+const DAMPING = 0.985;
+const FLOOR_Y = () => H() - 90;
+const BOUNCE  = 0.38;
+
+// ═══════════════════════════════════════════════════════════
+//  STATE
+// ═══════════════════════════════════════════════════════════
+let gameState  = 'menu';
+let score = 0, health = 100, comboCount = 0, comboTimer = 0;
+let activeTool = 'fist';
+let particles = [], bullets = [], bombs = [], lightnings = [];
+let frozen = false;
+let dragNode = null, dragOffX = 0, dragOffY = 0;
+let touchX = 0, touchY = 0, isTouching = false;
+let sawActive = false, sawAngle = 0;
+let ragdoll;
+let aiTimer = 30;
+
+function rand(a,b) { return a + Math.random() * (b - a); }
+
+// ═══════════════════════════════════════════════════════════
+//  RESIZE
+// ═══════════════════════════════════════════════════════════
+function resize() {
+  canvas.width  = window.innerWidth;
+  canvas.height = window.innerHeight;
+  if (ragdoll) ragdoll.resetPosition();
+}
+window.addEventListener('resize', resize);
+
+// ═══════════════════════════════════════════════════════════
+//  PHYSICS
+// ═══════════════════════════════════════════════════════════
+class Point {
+  constructor(x, y, mass = 1) {
+    this.x = x; this.y = y; this.ox = x; this.oy = y; this.mass = mass; this.pinned = false;
+  }
+  update() {
+    if (this.pinned || frozen) return;
+    const vx = (this.x - this.ox) * DAMPING;
+    const vy = (this.y - this.oy) * DAMPING;
+    this.ox = this.x; this.oy = this.y;
+    this.x += vx; this.y += vy + GRAVITY;
+    if (this.y > FLOOR_Y()) { this.y = FLOOR_Y(); this.oy = this.y + vy * BOUNCE; this.ox = this.x - vx * 0.6; }
+    if (this.x < 8)         { this.x = 8;         this.ox = this.x + vx * BOUNCE; }
+    if (this.x > W() - 8)   { this.x = W() - 8;   this.ox = this.x - vx * BOUNCE; }
+  }
+  applyForce(fx, fy) {
+    if (frozen) return;
+    this.ox -= fx / this.mass;
+    this.oy -= fy / this.mass;
+  }
+}
+
+class Stick {
+  constructor(a, b, len, stiff = 1) {
+    this.a = a; this.b = b;
+    this.len = len || Math.hypot(b.x - a.x, b.y - a.y);
+    this.stiff = stiff;
+  }
+  solve() {
+    const dx = this.b.x - this.a.x, dy = this.b.y - this.a.y;
+    const dist = Math.hypot(dx, dy) || 0.001;
+    const diff = ((dist - this.len) / dist) * 0.5 * this.stiff;
+    if (!this.a.pinned) { this.a.x += dx * diff; this.a.y += dy * diff; }
+    if (!this.b.pinned) { this.b.x -= dx * diff; this.b.y -= dy * diff; }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+//  RAGDOLL
+// ═══════════════════════════════════════════════════════════
+class Ragdoll {
+  constructor() { this.build(); }
+  build() {
+    const cx = W() / 2, cy = H() / 2 - 80;
+    this.p = {
+      head:   new Point(cx,      cy - 60, 0.7),
+      neck:   new Point(cx,      cy - 40, 1),
+      chest:  new Point(cx,      cy - 10, 1.2),
+      belly:  new Point(cx,      cy + 20, 1.2),
+      hip:    new Point(cx,      cy + 50, 1),
+      shldrL: new Point(cx - 28, cy - 20, 0.8),
+      shldrR: new Point(cx + 28, cy - 20, 0.8),
+      elbowL: new Point(cx - 40, cy + 20, 0.7),
+      elbowR: new Point(cx + 40, cy + 20, 0.7),
+      handL:  new Point(cx - 38, cy + 55, 0.5),
+      handR:  new Point(cx + 38, cy + 55, 0.5),
+      hipL:   new Point(cx - 16, cy + 55, 0.9),
+      hipR:   new Point(cx + 16, cy + 55, 0.9),
+      kneeL:  new Point(cx - 18, cy + 100, 0.8),
+      kneeR:  new Point(cx + 18, cy + 100, 0.8),
+      footL:  new Point(cx - 16, cy + 150, 0.7),
+      footR:  new Point(cx + 16, cy + 150, 0.7),
+    };
+    const p = this.p;
+    this.sticks = [
+      new Stick(p.head,p.neck,22), new Stick(p.neck,p.chest,32),
+      new Stick(p.chest,p.belly,30), new Stick(p.belly,p.hip,32),
+      new Stick(p.neck,p.shldrL,30), new Stick(p.neck,p.shldrR,30),
+      new Stick(p.shldrL,p.elbowL,36), new Stick(p.shldrR,p.elbowR,36),
+      new Stick(p.elbowL,p.handL,36), new Stick(p.elbowR,p.handR,36),
+      new Stick(p.hip,p.hipL,18), new Stick(p.hip,p.hipR,18),
+      new Stick(p.hipL,p.kneeL,48), new Stick(p.hipR,p.kneeR,48),
+      new Stick(p.kneeL,p.footL,48), new Stick(p.kneeR,p.footR,48),
+      new Stick(p.chest,p.shldrL,38,0.5), new Stick(p.chest,p.shldrR,38,0.5),
+      new Stick(p.chest,p.hip,60,0.4),
+      new Stick(p.shldrL,p.chest,40,0.3), new Stick(p.shldrR,p.chest,40,0.3),
+    ];
+    this.health = 100; this.frozenColor = false; this.fireTimer = 0;
+  }
+  resetPosition() {
+    const cx = W()/2, cy = H()/2 - 60;
+    const off = {
+      head:[0,-60],neck:[0,-40],chest:[0,-10],belly:[0,20],hip:[0,50],
+      shldrL:[-28,-20],shldrR:[28,-20],elbowL:[-40,20],elbowR:[40,20],
+      handL:[-38,55],handR:[38,55],hipL:[-16,55],hipR:[16,55],
+      kneeL:[-18,100],kneeR:[18,100],footL:[-16,150],footR:[16,150]
+    };
+    for (const k in this.p) {
+      this.p[k].x = cx+off[k][0]; this.p[k].y = cy+off[k][1];
+      this.p[k].ox = this.p[k].x; this.p[k].oy = this.p[k].y;
+    }
+    this.health=100; this.frozenColor=false; this.fireTimer=0;
+    health=100; updateHealthBar();
+  }
+  allPoints() { return Object.values(this.p); }
+  centerX() { return this.p.chest.x; }
+  centerY() { return this.p.chest.y; }
+
+  update() {
+    for (const k in this.p) this.p[k].update();
+    for (let i=0;i<8;i++) this.sticks.forEach(s=>s.solve());
+    if (this.fireTimer > 0) {
+      this.fireTimer--;
+      if (Math.random() < 0.6) {
+        const pts = this.allPoints();
+        const pt  = pts[Math.floor(Math.random()*pts.length)];
+        spawnParticle(pt.x+rand(-8,8),pt.y+rand(-8,8),
+          rand(-1.5,1.5),rand(-3,-0.5),'#ff6600',rand(4,9),rand(20,40),'fire');
+      }
+      if (this.fireTimer%8===0 && gameState==='playing') damageRagdoll(0.5);
+    }
+  }
+
+  draw() {
+    const p = this.p;
+    ctx.save();
+    ctx.globalAlpha=0.18; ctx.fillStyle='#000';
+    ctx.beginPath(); ctx.ellipse(p.hip.x,FLOOR_Y()+5,35,8,0,0,Math.PI*2); ctx.fill();
+    ctx.globalAlpha=1;
+
+    const skin  = this.frozenColor ? '#88ccff' : '#d4956a';
+    const dark  = this.frozenColor ? '#5599cc' : '#a0694a';
+    const cloth = this.frozenColor ? '#6699cc' : '#3355aa';
+
+    this._seg(p.neck,  p.chest, cloth, 20);
+    this._seg(p.chest, p.belly, cloth, 18);
+    this._seg(p.belly, p.hip,   cloth, 16);
+    this._limb(p.shldrL,p.elbowL,p.handL, skin,  dark,  9);
+    this._limb(p.shldrR,p.elbowR,p.handR, skin,  dark,  9);
+    this._limb(p.hipL,  p.kneeL, p.footL, '#334','#223',11);
+    this._limb(p.hipR,  p.kneeR, p.footR, '#334','#223',11);
+    this._shoe(p.kneeL, p.footL);
+    this._shoe(p.kneeR, p.footR);
+    this._seg(p.neck, p.head, skin, 10);
+
+    ctx.beginPath(); ctx.arc(p.head.x,p.head.y,22,0,Math.PI*2);
+    ctx.fillStyle=skin; ctx.fill();
+    ctx.strokeStyle=dark; ctx.lineWidth=2; ctx.stroke();
+
+    const ang = Math.atan2(p.neck.y-p.head.y, p.neck.x-p.head.x) + Math.PI/2;
+    ctx.save(); ctx.translate(p.head.x,p.head.y); ctx.rotate(ang);
+    ctx.fillStyle='#fff';
+    ctx.beginPath(); ctx.arc(-7,-5,5,0,Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(7,-5,5,0,Math.PI*2);  ctx.fill();
+    ctx.fillStyle = this.frozenColor ? '#4499ff' : '#222';
+    ctx.beginPath(); ctx.arc(-7,-5,3,0,Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(7,-5,3,0,Math.PI*2);  ctx.fill();
+    ctx.strokeStyle='#555'; ctx.lineWidth=2; ctx.lineCap='round';
+    ctx.beginPath();
+    if (this.health>50) ctx.arc(0,5,6,0.1,Math.PI-0.1);
+    else ctx.arc(0,8,6,Math.PI+0.2,-0.2);
+    ctx.stroke();
+    ctx.restore();
+    ctx.restore();
+  }
+  _seg(a,b,col,w) {
+    ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y);
+    ctx.strokeStyle=col; ctx.lineWidth=w; ctx.lineCap='round'; ctx.stroke();
+  }
+  _limb(a,b,c,col,dark,w) { this._seg(a,b,col,w*2); this._seg(b,c,col,(w-1)*2); }
+  _shoe(knee,foot) {
+    const ang=Math.atan2(foot.y-knee.y,foot.x-knee.x);
+    ctx.save(); ctx.translate(foot.x,foot.y); ctx.rotate(ang);
+    ctx.beginPath(); ctx.ellipse(8,0,14,7,0,0,Math.PI*2);
+    ctx.fillStyle='#222'; ctx.fill(); ctx.restore();
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+//  PARTICLES
+// ═══════════════════════════════════════════════════════════
+function spawnParticle(x,y,vx,vy,color,size,life,type='default') {
+  particles.push({x,y,vx,vy,color,size,life,maxLife:life,type});
+}
+function spawnBlood(x,y,force=1) {
+  for (let i=0;i<Math.floor(rand(4,10)*force);i++)
+    spawnParticle(x,y,rand(-4,4)*force,rand(-6,-1)*force,
+      Math.random()<0.7?'#cc0000':'#ff2222',rand(3,7),rand(25,55),'blood');
+}
+function spawnSpark(x,y) {
+  for (let i=0;i<8;i++)
+    spawnParticle(x,y,rand(-5,5),rand(-6,-1),
+      Math.random()<0.5?'#ffcc00':'#ffaa00',rand(2,5),rand(15,30),'spark');
+}
+function spawnExplosion(x,y) {
+  for (let i=0;i<40;i++) {
+    const a=Math.random()*Math.PI*2, spd=rand(2,12);
+    spawnParticle(x,y,Math.cos(a)*spd,Math.sin(a)*spd,
+      ['#ff4400','#ff8800','#ffcc00','#fff'][Math.floor(Math.random()*4)],
+      rand(4,14),rand(30,70),'spark');
+  }
+  for (let i=0;i<15;i++) spawnBlood(x+rand(-20,20),y+rand(-20,20),2);
+  spawnParticle(x,y,0,0,'rgba(255,140,0,0.3)',60,20,'shockwave');
+}
+function updateParticles() {
+  for (let i=particles.length-1;i>=0;i--) {
+    const p=particles[i];
+    if (p.type!=='shockwave') {
+      p.x+=p.vx; p.y+=p.vy;
+      p.vy += p.type==='fire' ? -0.05 : 0.3;
+      p.vx*=0.96; p.vy*=0.98;
+      if (p.type==='blood'&&p.y>FLOOR_Y()) { p.y=FLOOR_Y(); p.vy*=-0.2; p.vx*=0.7; }
+    } else { p.size+=4; }
+    if (--p.life<=0) particles.splice(i,1);
+  }
+}
+function drawParticles() {
+  for (const p of particles) {
+    const a=p.life/p.maxLife;
+    ctx.save(); ctx.globalAlpha=a;
+    if (p.type==='shockwave') {
+      ctx.strokeStyle=p.color; ctx.lineWidth=3;
+      ctx.beginPath(); ctx.arc(p.x,p.y,p.size,0,Math.PI*2); ctx.stroke();
+    } else if (p.type==='fire') {
+      const g=ctx.createRadialGradient(p.x,p.y,0,p.x,p.y,p.size);
+      g.addColorStop(0,'#ffff00'); g.addColorStop(0.4,p.color); g.addColorStop(1,'transparent');
+      ctx.fillStyle=g; ctx.beginPath(); ctx.arc(p.x,p.y,p.size,0,Math.PI*2); ctx.fill();
+    } else {
+      ctx.fillStyle=p.color;
+      ctx.beginPath(); ctx.arc(p.x,p.y,p.size*a,0,Math.PI*2); ctx.fill();
+    }
+    ctx.restore();
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+//  BULLETS
+// ═══════════════════════════════════════════════════════════
+function spawnBullet(x,y,tx,ty) {
+  const ang=Math.atan2(ty-y,tx-x),spd=18;
+  bullets.push({x,y,vx:Math.cos(ang)*spd,vy:Math.sin(ang)*spd,trail:[]});
+}
+function updateBullets() {
+  for (let i=bullets.length-1;i>=0;i--) {
+    const b=bullets[i];
+    b.trail.push({x:b.x,y:b.y});
+    if (b.trail.length>8) b.trail.shift();
+    b.x+=b.vx; b.y+=b.vy; b.vy+=0.2;
+    let hit=false;
+    for (const pt of ragdoll.allPoints()) {
+      if (Math.hypot(pt.x-b.x,pt.y-b.y)<14) {
+        pt.applyForce(b.vx*3,b.vy*3);
+        spawnBlood(b.x,b.y,1.5);
+        if (gameState==='playing') { damageRagdoll(8); addScore(80,b.x,b.y,null); }
+        hit=true; break;
+      }
+    }
+    if (hit||b.x<0||b.x>W()||b.y>FLOOR_Y()) bullets.splice(i,1);
+  }
+}
+function drawBullets() {
+  for (const b of bullets) {
+    if (b.trail.length>1) {
+      ctx.beginPath(); ctx.moveTo(b.trail[0].x,b.trail[0].y);
+      for (let i=1;i<b.trail.length;i++) ctx.lineTo(b.trail[i].x,b.trail[i].y);
+      ctx.lineTo(b.x,b.y);
+      ctx.strokeStyle='rgba(255,220,100,0.7)'; ctx.lineWidth=2; ctx.stroke();
+    }
+    ctx.fillStyle='#ffe000';
+    ctx.beginPath(); ctx.arc(b.x,b.y,3,0,Math.PI*2); ctx.fill();
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+//  BOMBS
+// ═══════════════════════════════════════════════════════════
+function spawnBomb(x,y) {
+  bombs.push({x,y,vy:rand(-8,-4),vx:rand(-3,3),fuse:90,radius:80});
+}
+function updateBombs() {
+  for (let i=bombs.length-1;i>=0;i--) {
+    const b=bombs[i];
+    b.vy+=GRAVITY; b.y+=b.vy; b.x+=b.vx;
+    if (b.y>FLOOR_Y()) { b.y=FLOOR_Y(); b.vy*=-0.5; b.vx*=0.8; }
+    if (b.x<0||b.x>W()) b.vx*=-1;
+    if (--b.fuse<=0) { explodeBomb(b); bombs.splice(i,1); }
+  }
+}
+function explodeBomb(b) {
+  flashScreen('#ff6600',0.5); spawnExplosion(b.x,b.y);
+  for (const pt of ragdoll.allPoints()) {
+    const dx=pt.x-b.x,dy=pt.y-b.y,dist=Math.hypot(dx,dy);
+    if (dist<b.radius&&dist>0) { const f=(1-dist/b.radius)*25; pt.applyForce(dx/dist*f,dy/dist*f-5); }
+  }
+  if (gameState==='playing') { damageRagdoll(35); addScore(350,b.x,b.y,'💥 ВЗРЫВ!'); }
+}
+function drawBombs() {
+  for (const b of bombs) {
+    if (Math.random()<0.5) spawnParticle(b.x,b.y-10,rand(-1,1),rand(-2,0),'#ffcc00',2,10,'spark');
+    const pulse=b.fuse<30?(Math.sin(Date.now()*0.03)*0.3+1):1;
+    ctx.save(); ctx.translate(b.x,b.y); ctx.scale(pulse,pulse);
+    ctx.font='28px serif'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText('💣',0,0);
+    ctx.fillStyle=b.fuse<30?'#ff2200':'#ffcc00';
+    ctx.fillRect(-16,-22,(b.fuse/90)*32,4);
+    ctx.restore();
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+//  LIGHTNING
+// ═══════════════════════════════════════════════════════════
+function strikeLightning(x,y) {
+  const seg=[]; let cx=x,cy=0;
+  while (cy<y) { cy+=rand(20,50); cx+=rand(-30,30); seg.push({x:cx,y:cy}); }
+  seg[seg.length-1]={x,y};
+  lightnings.push({segs:seg,life:15,maxLife:15});
+  flashScreen('#8888ff',0.35); spawnSpark(x,y);
+  for (const pt of ragdoll.allPoints())
+    if (Math.hypot(pt.x-x,pt.y-y)<50) pt.applyForce(rand(-8,8),rand(-12,-4));
+  if (gameState==='playing') { damageRagdoll(20); addScore(200,x,y,'⚡ УДАР!'); }
+}
+function updateLightnings() {
+  for (let i=lightnings.length-1;i>=0;i--) if(--lightnings[i].life<=0) lightnings.splice(i,1);
+}
+function drawLightnings() {
+  for (const l of lightnings) {
+    ctx.save(); ctx.globalAlpha=l.life/l.maxLife;
+    ctx.strokeStyle='#ffffff'; ctx.lineWidth=3;
+    ctx.shadowColor='#aabbff'; ctx.shadowBlur=20;
+    ctx.beginPath(); ctx.moveTo(l.segs[0].x,0);
+    for (const s of l.segs) ctx.lineTo(s.x,s.y);
+    ctx.stroke();
+    ctx.strokeStyle='#8888ff'; ctx.lineWidth=1; ctx.stroke();
+    ctx.restore();
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+//  DAMAGE / SCORE
+// ═══════════════════════════════════════════════════════════
+function damageRagdoll(amount) {
+  health=Math.max(0,health-amount); ragdoll.health=health; updateHealthBar();
+}
+function updateHealthBar() {
+  const bar=document.getElementById('health-bar');
+  bar.style.width=health+'%';
+  bar.style.background=health>50?'#e03030':health>25?'#e07a00':'#880000';
+}
+function addScore(pts,x,y,label) {
+  comboCount++;
+  clearTimeout(comboTimer);
+  comboTimer=setTimeout(()=>comboCount=0,2000);
+  const mult=Math.min(comboCount,5), total=pts*mult;
+  score+=total;
+  document.getElementById('score').textContent=score.toLocaleString();
+  showFloatingText(mult>1?`+${total} x${mult}`:`+${total}`,x,y,mult>1?'#ffcc00':'#fff');
+  if (label) { const el=document.getElementById('combo'); el.textContent=label; el.style.opacity=1; setTimeout(()=>el.style.opacity=0,900); }
+}
+
+// ═══════════════════════════════════════════════════════════
+//  UI
+// ═══════════════════════════════════════════════════════════
+function showFloatingText(text,x,y,color='#fff') {
+  const el=document.createElement('div'); el.className='float-txt';
+  el.textContent=text;
+  el.style.left=Math.min(W()-80,Math.max(10,x-30))+'px';
+  el.style.top=(y-30)+'px'; el.style.color=color;
+  document.getElementById('floating-text-container').appendChild(el);
+  setTimeout(()=>el.remove(),1300);
+}
+function flashScreen(color,intensity=0.3) {
+  const el=document.getElementById('screen-flash');
+  el.style.background=color; el.style.opacity=intensity;
+  setTimeout(()=>el.style.opacity=0,120);
+}
+
+// ═══════════════════════════════════════════════════════════
+//  AI DEMO — автобитьё на экране меню
+// ═══════════════════════════════════════════════════════════
+const AI_ACTIONS = [
+  // хук слева
+  ()=>{
+    const pt=ragdoll.p.chest;
+    pt.applyForce(rand(18,28),rand(-8,2));
+    spawnBlood(pt.x,pt.y,1.3); flashScreen('#ff0000',0.12);
+  },
+  // правый крюк в голову
+  ()=>{
+    const pt=ragdoll.p.head;
+    pt.applyForce(rand(-26,-16),rand(-10,-2));
+    spawnBlood(pt.x,pt.y,1.2); flashScreen('#ff0000',0.12);
+  },
+  // апперкот
+  ()=>{
+    ragdoll.p.belly.applyForce(rand(-5,5),rand(-24,-16));
+    ragdoll.p.head.applyForce(rand(-3,3),rand(-10,-4));
+    spawnBlood(ragdoll.p.belly.x,ragdoll.p.belly.y,1.5);
+    spawnSpark(ragdoll.p.head.x,ragdoll.p.head.y);
+    flashScreen('#ff8800',0.18);
+  },
+  // пинок по ногам
+  ()=>{
+    [ragdoll.p.hipL,ragdoll.p.hipR].forEach(pt=>pt.applyForce(rand(14,22),rand(-14,-6)));
+    spawnBlood(ragdoll.p.hip.x,ragdoll.p.hip.y,1.2); flashScreen('#ff0000',0.1);
+  },
+  // пуля
+  ()=>{
+    const tx=ragdoll.p.chest.x+rand(-25,25), ty=ragdoll.p.chest.y+rand(-25,25);
+    spawnBullet(rand(0,W()*0.12), rand(FLOOR_Y()*0.3,FLOOR_Y()*0.6), tx, ty);
+  },
+  // бомба под ноги
+  ()=>{ spawnBomb(ragdoll.centerX()+rand(-50,50), ragdoll.centerY()-50); },
+  // молния
+  ()=>{ strikeLightning(ragdoll.centerX()+rand(-40,40), ragdoll.centerY()+rand(-30,30)); },
+  // двойной кулак
+  ()=>{
+    ragdoll.p.head.applyForce(rand(-12,12),rand(-20,-12));
+    ragdoll.p.chest.applyForce(rand(-10,10),rand(-16,-8));
+    spawnBlood(ragdoll.p.head.x,ragdoll.p.head.y,2);
+    flashScreen('#ff0000',0.2);
+  },
+  // body slam — всё летит
+  ()=>{
+    ragdoll.allPoints().forEach(pt=>pt.applyForce(rand(-10,10),rand(-16,-8)));
+    spawnExplosion(ragdoll.centerX(),ragdoll.centerY());
+    flashScreen('#ff4400',0.35);
+  },
+];
+
+function aiUpdate() {
+  if (--aiTimer <= 0) {
+    AI_ACTIONS[Math.floor(Math.random()*AI_ACTIONS.length)]();
+    aiTimer = Math.floor(rand(15,50));
+  }
+  // keep face beaten on menu
+  ragdoll.health = 28;
+  // respawn if flew off screen
+  const cx=ragdoll.centerX(), cy=ragdoll.centerY();
+  if (cx<-80||cx>W()+80||cy<-200||cy>H()+200) {
+    ragdoll.resetPosition();
+    particles=[]; bullets=[]; bombs=[]; lightnings=[];
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+//  TOOLBAR
+// ═══════════════════════════════════════════════════════════
+function buildToolbar() {
+  const tb=document.getElementById('toolbar');
+  for (const t of TOOLS) {
+    const btn=document.createElement('div');
+    btn.className='tool-btn'+(t.id===activeTool?' active':'');
+    btn.innerHTML=`<div class="icon">${t.icon}</div><div class="name">${t.name}</div>`;
+    btn.addEventListener('click',()=>{
+      if (gameState!=='playing') return;
+      activeTool=t.id;
+      document.querySelectorAll('.tool-btn').forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+      if (t.id==='freeze') activateFreeze();
+    });
+    tb.appendChild(btn);
+  }
+}
+function activateFreeze() {
+  frozen=true; ragdoll.frozenColor=true;
+  ragdoll.allPoints().forEach(pt=>{ pt.vx=0; pt.vy=0; });
+  flashScreen('#88ddff',0.4);
+  showFloatingText('❄️ ЗАМОРОЗКА!',W()/2,H()/3,'#88ddff');
+  setTimeout(()=>{
+    frozen=false; ragdoll.frozenColor=false;
+    activeTool='fist';
+    document.querySelectorAll('.tool-btn').forEach((b,i)=>b.classList.toggle('active',i===0));
+  },3000);
+}
+
+// ═══════════════════════════════════════════════════════════
+//  INPUT
+// ═══════════════════════════════════════════════════════════
+function getPos(e) { const t=e.touches?e.touches[0]:e; return {x:t.clientX,y:t.clientY}; }
+
+function onStart(e) {
+  if (gameState!=='playing') return;
+  if (e.target.closest('#toolbar,#reset-btn')) return;
+  const {x,y}=getPos(e);
+  touchX=x; touchY=y; isTouching=true;
+  if (activeTool==='fist') {
+    let best=null,bestD=40;
+    for (const pt of ragdoll.allPoints()) { const d=Math.hypot(pt.x-x,pt.y-y); if(d<bestD){bestD=d;best=pt;} }
+    if (best) { dragNode=best; dragOffX=x-best.x; dragOffY=y-best.y; } else punchAt(x,y);
+  } else if (activeTool==='gun')       shootGun(x,y);
+  else if (activeTool==='bomb')        { spawnBomb(x,y-40); addScore(50,x,y,null); }
+  else if (activeTool==='lightning')   strikeLightning(x,y);
+  else if (activeTool==='saw')         sawActive=true;
+}
+function onMove(e) {
+  if (gameState!=='playing'||!isTouching) return;
+  const {x,y}=getPos(e); const dx=x-touchX,dy=y-touchY; touchX=x; touchY=y;
+  if (dragNode) { dragNode.x=x-dragOffX; dragNode.y=y-dragOffY; dragNode.ox=dragNode.x-dx*0.5; dragNode.oy=dragNode.y-dy*0.5; }
+  else if (activeTool==='saw'&&sawActive) applySaw(x,y,dx,dy);
+}
+function onEnd() { isTouching=false; dragNode=null; sawActive=false; }
+
+function punchAt(tx,ty) {
+  let closest=null,closestD=120;
+  for (const pt of ragdoll.allPoints()) { const d=Math.hypot(pt.x-tx,pt.y-ty); if(d<closestD){closestD=d;closest=pt;} }
+  if (closest) {
+    const ang=Math.atan2(closest.y-ty,closest.x-tx);
+    closest.applyForce(-Math.cos(ang)*14,-Math.sin(ang)*14-5);
+    spawnBlood(closest.x,closest.y); damageRagdoll(5); addScore(30,closest.x,closest.y,null);
+    flashScreen('#ff0000',0.12);
+  }
+}
+function shootGun(tx,ty) {
+  spawnBullet(W()*0.1,FLOOR_Y()-30,tx,ty);
+  spawnParticle(W()*0.1,FLOOR_Y()-30,rand(-2,2),rand(-3,0),'#ffee00',10,8,'spark');
+  addScore(60,tx,ty,null);
+}
+function applySaw(x,y,dx,dy) {
+  let hit=false;
+  for (const pt of ragdoll.allPoints()) {
+    if (Math.hypot(pt.x-x,pt.y-y)<28) {
+      pt.applyForce(dx*0.5,dy*0.5); spawnBlood(pt.x,pt.y,0.8); spawnSpark(x,y); hit=true;
+    }
+  }
+  if (hit) { damageRagdoll(0.8); addScore(5,x,y,null); flashScreen('#ff0000',0.05); }
+}
+
+canvas.addEventListener('touchstart',onStart,{passive:false});
+canvas.addEventListener('touchmove', onMove, {passive:false});
+canvas.addEventListener('touchend',  onEnd);
+canvas.addEventListener('mousedown', onStart);
+canvas.addEventListener('mousemove', onMove);
+canvas.addEventListener('mouseup',   onEnd);
+
+// ═══════════════════════════════════════════════════════════
+//  MENU → GAME
+// ═══════════════════════════════════════════════════════════
+document.getElementById('play-btn').addEventListener('click', startGame);
+function startGame() {
+  gameState='playing';
+  const menu=document.getElementById('menu');
+  menu.classList.add('hidden');
+  setTimeout(()=>menu.style.display='none',700);
+  document.getElementById('ui-top').classList.add('visible');
+  document.getElementById('toolbar').classList.add('visible');
+  document.getElementById('reset-btn').classList.add('visible');
+  frozen=false; ragdoll.frozenColor=false;
+  ragdoll.resetPosition();
+  particles=[]; bullets=[]; bombs=[]; lightnings=[];
+  health=100; score=0; comboCount=0;
+  document.getElementById('score').textContent='0';
+  updateHealthBar();
+  flashScreen('#ffffff',0.5);
+}
+document.getElementById('reset-btn').addEventListener('click',()=>{
+  if (gameState!=='playing') return;
+  ragdoll.resetPosition();
+  particles=[]; bullets=[]; bombs=[]; lightnings=[];
+  health=100; score=0; comboCount=0; frozen=false; ragdoll.frozenColor=false;
+  document.getElementById('score').textContent='0';
+  updateHealthBar();
+  flashScreen('#ffffff',0.3);
+});
+
+// ═══════════════════════════════════════════════════════════
+//  BACKGROUND
+// ═══════════════════════════════════════════════════════════
+function drawBackground() {
+  const bg=ctx.createLinearGradient(0,0,0,H());
+  bg.addColorStop(0,'#0e0e18'); bg.addColorStop(1,'#1a0a0a');
+  ctx.fillStyle=bg; ctx.fillRect(0,0,W(),H());
+  ctx.strokeStyle='rgba(255,255,255,0.03)'; ctx.lineWidth=1;
+  for (let x=0;x<W();x+=50) { ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H());ctx.stroke(); }
+  for (let y=0;y<H();y+=50) { ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W(),y);ctx.stroke(); }
+  const fy=FLOOR_Y();
+  const fg=ctx.createLinearGradient(0,fy-5,0,fy+60);
+  fg.addColorStop(0,'#2a1a1a'); fg.addColorStop(1,'#0a0505');
+  ctx.fillStyle=fg; ctx.fillRect(0,fy,W(),H()-fy);
+  ctx.strokeStyle='#441111'; ctx.lineWidth=2;
+  ctx.beginPath(); ctx.moveTo(0,fy); ctx.lineTo(W(),fy); ctx.stroke();
+  ctx.fillStyle='rgba(100,30,30,0.3)';
+  for (let x=25;x<W();x+=50) { ctx.beginPath();ctx.arc(x,fy+15,3,0,Math.PI*2);ctx.fill(); }
+  for (const p of particles) {
+    if (p.type==='blood'&&p.y>=FLOOR_Y()-5) {
+      ctx.fillStyle='rgba(120,0,0,0.4)';
+      ctx.beginPath(); ctx.ellipse(p.x,FLOOR_Y(),p.size*2,p.size,0,0,Math.PI*2); ctx.fill();
+    }
+  }
+}
+
+function drawToolHint() {
+  if (gameState!=='playing') return;
+  const hints={fist:'Тащи тело или тапни для удара',gun:'Тапни куда стрелять',
+    bomb:'Тапни чтобы бросить бомбу',lightning:'Тапни для удара молнией',
+    saw:'Води пальцем по телу',freeze:'Заморозка на 3 сек'};
+  ctx.save(); ctx.font='11px Courier New'; ctx.fillStyle='rgba(255,255,255,0.22)'; ctx.textAlign='center';
+  ctx.fillText(hints[activeTool]||'',W()/2,FLOOR_Y()+35); ctx.restore();
+}
+
+function drawSawCursor(x,y) {
+  sawAngle+=0.18; ctx.save(); ctx.translate(x,y); ctx.rotate(sawAngle);
+  ctx.strokeStyle='#ff8800'; ctx.lineWidth=3;
+  ctx.beginPath(); ctx.arc(0,0,20,0,Math.PI*2); ctx.stroke();
+  for (let i=0;i<12;i++) {
+    const a=(i/12)*Math.PI*2;
+    ctx.beginPath(); ctx.moveTo(Math.cos(a)*18,Math.sin(a)*18); ctx.lineTo(Math.cos(a)*26,Math.sin(a)*26); ctx.stroke();
+  }
+  ctx.restore();
+}
+
+// ═══════════════════════════════════════════════════════════
+//  INIT + LOOP
+// ═══════════════════════════════════════════════════════════
+function init() {
+  resize();
+  ragdoll=new Ragdoll();
+  buildToolbar();
+  updateHealthBar();
+  requestAnimationFrame(loop);
+}
+
+function loop() {
+  ctx.clearRect(0,0,W(),H());
+  drawBackground();
+  updateParticles(); drawParticles();
+  updateBullets();   drawBullets();
+  updateBombs();     drawBombs();
+  updateLightnings();drawLightnings();
+  if (gameState==='menu') aiUpdate();
+  ragdoll.update();
+  ragdoll.draw();
+  if (activeTool==='saw'&&isTouching&&gameState==='playing') drawSawCursor(touchX,touchY);
+  drawToolHint();
+  if (frozen) {
+    ctx.fillStyle='rgba(100,180,255,0.06)'; ctx.fillRect(0,0,W(),H());
+    ctx.strokeStyle='rgba(150,220,255,0.12)'; ctx.lineWidth=1;
+    const t=Date.now()*0.003;
+    for (let i=0;i<5;i++) { ctx.beginPath();ctx.arc(W()/2,H()/2,80+i*60+Math.sin(t+i)*20,0,Math.PI*2);ctx.stroke(); }
+  }
+  if (gameState==='playing'&&health<=0) {
+    ctx.save(); ctx.font='bold 22px Courier New';
+    ctx.fillStyle=`rgba(255,60,60,${0.5+Math.sin(Date.now()*0.005)*0.5})`;
+    ctx.textAlign='center'; ctx.fillText('💀 НАЖМИ ⟳ RESET',W()/2,H()/2-40); ctx.restore();
+  }
+  requestAnimationFrame(loop);
+}
+
+init();
+</script>
+</body>
+</html>
